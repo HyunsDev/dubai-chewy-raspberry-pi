@@ -55,8 +55,7 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
     return cachedDynamicInfo;
   }
 
-  // 1. 모든 비동기 작업을 병렬로 시작
-  // systeminformation과 vcgencmd, 쉘 명령어를 한꺼번에 실행합니다.
+  // 병렬 실행
   const [
     cpu,
     currentLoad,
@@ -67,7 +66,8 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
     tempOutput,
     clockOutput,
     throttledOutput,
-    wifiOutput,
+    wifiSsid, // iwgetid 결과
+    nwStats, // 네트워크 속도/인터페이스 정보
   ] = await Promise.all([
     systeminformation.cpu(),
     systeminformation.currentLoad(),
@@ -78,21 +78,37 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
     getVcgencmd("measure_temp"),
     getVcgencmd("measure_clock arm"),
     getVcgencmd("get_throttled"),
-    // wifiNetworks() 대신 iwgetid를 사용해 연결된 SSID만 즉시 가져옵니다.
-    execAsync("iwgetid -r").catch(() => ({ stdout: "Ethernet" })),
+    // 1. SSID 가져오기 (실패 시 빈 문자열)
+    execAsync("iwgetid -r")
+      .then((r) => r.stdout.trim())
+      .catch(() => ""),
+    // 2. 인터페이스 상세 정보 (LAN 속도 확인용)
+    systeminformation.networkInterfaces(),
   ]);
 
-  // 2. 데이터 파싱 로직
-  // Voltage: "volt=0.8500V" -> "0.8500V"
+  // WiFi 판별 로직
+  let wifiString = "Ethernet";
+  if (wifiSsid) {
+    // SSID가 있으면 WiFi 연결로 간주
+    wifiString = `WiFi: ${wifiSsid}`;
+  } else {
+    // SSID가 없으면 현재 활성화된 인터페이스 중 LAN(eth0 등)을 찾음
+    const activeIface = Array.isArray(nwStats)
+      ? nwStats.find((i) => i.operstate === "up" && !i.internal)
+      : null;
+
+    if (activeIface) {
+      const speed = activeIface.speed
+        ? `${activeIface.speed}Mbps`
+        : "Connected";
+      wifiString = `LAN (${speed})`;
+    }
+  }
+
+  // --- 기존 파싱 로직 시작 ---
   const voltage = voltageOutput.split("=")[1] || "0V";
-
-  // Temp: "temp=45.0'C" -> "45.0"
   const temp = tempOutput.split("=")[1]?.replace("'C", "") || "0";
-
-  // Clock: "frequency(48)=1500000000" -> 1.50 (GHz)
   const clockSpeed = parseInt(clockOutput.split("=")[1] || "0") / 1000000000;
-
-  // Throttled Bitmask 분석
   const throttledHex = throttledOutput.split("=")[1] || "0x0";
   const throttledValue = parseInt(throttledHex, 16);
 
@@ -103,18 +119,12 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
   const overheatingNow = (throttledValue & 0x8) !== 0;
   const overheatingPast = (throttledValue & 0x80000) !== 0;
 
-  // WiFi SSID
-  const wifiString = (wifiOutput as any).stdout.trim() || "Ethernet";
-
-  // Disk: 루트(/) 마운트 지점 찾기
   const rootDisk = fsSize.find((d) => d.mount === "/") || fsSize[0];
 
-  // 3. 상태(Status) 판단 로직
   let status: SystemStatus["status"] = "Chewy";
   const statusMessages: string[] = [];
   const uptime = os.uptime();
 
-  // WARN 기준
   if (throttlingPast) statusMessages.push("throttled past");
   if (underVoltagePast) statusMessages.push("under voltage past");
   if (parseFloat(temp) >= 60) statusMessages.push("high temp");
@@ -123,7 +133,6 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
   if (mem.swaptotal > 0 && (mem.swapused / mem.swaptotal) * 100 >= 80)
     statusMessages.push("high swap usage");
 
-  // CRITICAL 기준
   let isCritical = false;
   if (throttlingNow) {
     isCritical = true;
@@ -150,15 +159,10 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
     statusMessages.push("CRITICAL swap usage");
   }
 
-  if (isCritical) {
-    status = "Critical";
-  } else if (statusMessages.length > 0) {
-    status = "Warn";
-  } else if (uptime >= 7 * 24 * 3600) {
-    status = "Super Chewy";
-  }
+  if (isCritical) status = "Critical";
+  else if (statusMessages.length > 0) status = "Warn";
+  else if (uptime >= 7 * 24 * 3600) status = "Super Chewy";
 
-  // 4. 최종 객체 생성 및 캐싱
   cachedDynamicInfo = {
     uptime: formatUptime(uptime),
     datetime:
@@ -170,16 +174,8 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
       speed: cpu.speed.toFixed(2),
       usage: currentLoad.currentLoad,
     },
-    power: {
-      voltage,
-      underVoltagePast,
-      underVoltageNow,
-    },
-    temp: {
-      value: temp,
-      overheatingPast,
-      overheatingNow,
-    },
+    power: { voltage, underVoltagePast, underVoltageNow },
+    temp: { value: temp, overheatingPast, overheatingNow },
     clock: {
       speed: clockSpeed.toFixed(2),
       governor: cpu.governor || "unknown",
