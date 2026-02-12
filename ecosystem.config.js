@@ -1,4 +1,4 @@
-module.exports = {
+export default {
   apps: [
     {
       name: "dubai-chewy-raspberry-pi",
