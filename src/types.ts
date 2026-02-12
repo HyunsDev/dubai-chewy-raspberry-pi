@@ -9,7 +9,7 @@ export interface StaticInfo {
 export interface DynamicInfo {
   uptime: string;
   datetime: string;
-  wifi: string; // "SSID - Signal" or "LAN"
+  wifi: string; // "SSID - Signal" or "LAN - 1000Mbps"
   cpu: {
     model: string;
     cores: number;

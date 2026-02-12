@@ -89,7 +89,7 @@ async function formatStatusText(
   ];
 
   const info = [
-    `${c(teal, "ubuntu@ubuntu")}`,
+    `${c(teal, "raspberry-pi@hyunsdev")}`,
     `${c(grey, "-------------")}`,
     C("OS:", stats.os),
     C("Host:", stats.host),

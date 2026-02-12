@@ -55,86 +55,75 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
     return cachedDynamicInfo;
   }
 
-  const [cpu, currentLoad, mem, fsSize, wifiNetworks] = await Promise.all([
+  // 1. 모든 비동기 작업을 병렬로 시작
+  // systeminformation과 vcgencmd, 쉘 명령어를 한꺼번에 실행합니다.
+  const [
+    cpu,
+    currentLoad,
+    mem,
+    fsSize,
+    processes,
+    voltageOutput,
+    tempOutput,
+    clockOutput,
+    throttledOutput,
+    wifiOutput,
+  ] = await Promise.all([
     systeminformation.cpu(),
     systeminformation.currentLoad(),
     systeminformation.mem(),
     systeminformation.fsSize(),
-    systeminformation.wifiNetworks(),
+    systeminformation.processes(),
+    getVcgencmd("measure_volts"),
+    getVcgencmd("measure_temp"),
+    getVcgencmd("measure_clock arm"),
+    getVcgencmd("get_throttled"),
+    // wifiNetworks() 대신 iwgetid를 사용해 연결된 SSID만 즉시 가져옵니다.
+    execAsync("iwgetid -r").catch(() => ({ stdout: "Ethernet" })),
   ]);
 
-  // Parse vcgencmd outputs
-  const voltageOutput = await getVcgencmd("measure_volts"); // volt=0.8500V
-  const tempOutput = await getVcgencmd("measure_temp"); // temp=45.0'C
-  const clockOutput = await getVcgencmd("measure_clock arm"); // frequency(48)=1500000000
-  const throttledOutput = await getVcgencmd("get_throttled"); // throttled=0x0
-
-  // Voltage
+  // 2. 데이터 파싱 로직
+  // Voltage: "volt=0.8500V" -> "0.8500V"
   const voltage = voltageOutput.split("=")[1] || "0V";
 
-  // Temp
+  // Temp: "temp=45.0'C" -> "45.0"
   const temp = tempOutput.split("=")[1]?.replace("'C", "") || "0";
 
-  // Clock
-  const clockSpeed = parseInt(clockOutput.split("=")[1] || "0") / 1000000000; // to GHz
+  // Clock: "frequency(48)=1500000000" -> 1.50 (GHz)
+  const clockSpeed = parseInt(clockOutput.split("=")[1] || "0") / 1000000000;
 
-  // Throttled
-  // Bit 0: Under-voltage detected
-  // Bit 1: Arm frequency capped
-  // Bit 2: Currently throttled
-  // Bit 3: Soft temperature limit active
-  // Bit 16: Under-voltage has occurred
-  // Bit 17: Arm frequency capping has occurred
-  // Bit 18: Throttling has occurred
-  // Bit 19: Soft temperature limit has occurred
+  // Throttled Bitmask 분석
   const throttledHex = throttledOutput.split("=")[1] || "0x0";
   const throttledValue = parseInt(throttledHex, 16);
 
   const underVoltageNow = (throttledValue & 0x1) !== 0;
   const underVoltagePast = (throttledValue & 0x10000) !== 0;
-  const throttlingNow = (throttledValue & 0x4) !== 0; // or capped? usually use bit 2 for active throttling
+  const throttlingNow = (throttledValue & 0x4) !== 0;
   const throttlingPast = (throttledValue & 0x40000) !== 0;
-  const overheatingNow = (throttledValue & 0x8) !== 0; // soft temp limit
+  const overheatingNow = (throttledValue & 0x8) !== 0;
   const overheatingPast = (throttledValue & 0x80000) !== 0;
 
-  // WiFi
-  // systeminformation wifiNetworks might be slow or require root.
-  // Fallback to simple check if we can't get it easily, or just use 'iwgetid' if needed.
-  // For now simple mocking or basic si usage.
-  let wifiString = "Ethernet";
-  const connectedWifi = wifiNetworks.find((n) => n.ssid); // trying to find connected, but si doesn't always show connected flag reliably in all OS
-  // Actually systeminformation.wifiConnections() is better but might fail on some systems.
-  // Let's rely on interface name from static info to guess or just leave simple.
-  // The requirement says "WIFI: ... // Lan if LAN".
-  // We can try to get SSID from iwgetid on RPi.
-  try {
-    const { stdout } = await execAsync("iwgetid -r");
-    if (stdout.trim()) {
-      wifiString = `${stdout.trim()} (Unknown Signal)`; // Signal strength hard to get without specific tools
-    }
-  } catch {
-    // ignore
-  }
+  // WiFi SSID
+  const wifiString = (wifiOutput as any).stdout.trim() || "Ethernet";
 
-  // Disk
-  // Find biggest mounted disk that is likely root
+  // Disk: 루트(/) 마운트 지점 찾기
   const rootDisk = fsSize.find((d) => d.mount === "/") || fsSize[0];
 
-  // Status Logic
+  // 3. 상태(Status) 판단 로직
   let status: SystemStatus["status"] = "Chewy";
   const statusMessages: string[] = [];
   const uptime = os.uptime();
 
-  // WARN Criteria
+  // WARN 기준
   if (throttlingPast) statusMessages.push("throttled past");
   if (underVoltagePast) statusMessages.push("under voltage past");
   if (parseFloat(temp) >= 60) statusMessages.push("high temp");
   if (rootDisk.use >= 70) statusMessages.push("high disk usage");
   if (currentLoad.currentLoad >= 80) statusMessages.push("high cpu load");
-  if ((mem.swapused / mem.swaptotal) * 100 >= 80)
+  if (mem.swaptotal > 0 && (mem.swapused / mem.swaptotal) * 100 >= 80)
     statusMessages.push("high swap usage");
 
-  // CRITICAL Criteria
+  // CRITICAL 기준
   let isCritical = false;
   if (throttlingNow) {
     isCritical = true;
@@ -169,10 +158,11 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
     status = "Super Chewy";
   }
 
+  // 4. 최종 객체 생성 및 캐싱
   cachedDynamicInfo = {
     uptime: formatUptime(uptime),
     datetime:
-      new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) + " (KST)", // Hardcoded KST as per example? Or use system? Example shows KST.
+      new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) + " (KST)",
     wifi: wifiString,
     cpu: {
       model: cpu.brand,
@@ -181,7 +171,7 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
       usage: currentLoad.currentLoad,
     },
     power: {
-      voltage: voltage,
+      voltage,
       underVoltagePast,
       underVoltageNow,
     },
@@ -197,22 +187,22 @@ async function getDynamicInfo(): Promise<DynamicInfo> {
       throttlingNow,
     },
     loadavg: loadAvgToString(os.loadavg()),
-    processes: (await systeminformation.processes()).all,
+    processes: processes.all,
     memory: {
       used: (mem.active / 1024 / 1024 / 1024).toFixed(2),
       total: (mem.total / 1024 / 1024 / 1024).toFixed(2),
       percentage: (mem.active / mem.total) * 100,
     },
     swap: {
-      used: (mem.swapused / 1024 / 1024).toFixed(2), // MiB per requirement example
-      total: (mem.swaptotal / 1024 / 1024 / 1024).toFixed(2), // GiB per requirement example
+      used: (mem.swapused / 1024 / 1024).toFixed(2),
+      total: (mem.swaptotal / 1024 / 1024 / 1024).toFixed(2),
       percentage: mem.swaptotal > 0 ? (mem.swapused / mem.swaptotal) * 100 : 0,
     },
     disk: {
       used: (rootDisk.used / 1024 / 1024 / 1024).toFixed(2),
       total: (rootDisk.size / 1024 / 1024 / 1024).toFixed(2),
       percentage: rootDisk.use,
-      readOnly: false, // systeminformation doesn't easily give RO status for mount. Might need 'mount' command parsing if critical.
+      readOnly: false,
     },
     status,
     statusMessage: statusMessages.join(", "),
