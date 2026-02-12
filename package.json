@@ -1,0 +1,29 @@
+{
+  "name": "dubai-chewy-raspberry-pi",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HyunsDev/dubai-chewy-raspberry-pi.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/HyunsDev/dubai-chewy-raspberry-pi/issues"
+  },
+  "homepage": "https://github.com/HyunsDev/dubai-chewy-raspberry-pi#readme",
+  "dependencies": {
+    "@fastify/static": "^9.0.0",
+    "date-fns": "^4.1.0",
+    "fastify": "^5.7.4",
+    "systeminformation": "^5.30.7"
+  }
+}
