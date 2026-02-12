@@ -96,7 +96,7 @@ async function formatStatusText(
     C("Uptime:", stats.uptime),
     C("Datetime:", stats.datetime),
     C("IPv4:", `${stats.ipv4} (${stats.interface})`),
-    C("WIFI:", stats.wifi),
+    C("Network:", stats.wifi),
     C(
       "CPU:",
       `${stats.cpu.model} (${stats.cpu.cores}) @ ${stats.cpu.speed}GHz - (${stats.cpu.usage.toFixed(0)}%)`,
