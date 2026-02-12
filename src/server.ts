@@ -31,6 +31,7 @@ async function formatStatusText(
   const warning = "#FFAA00";
   const critical = "#FF0000";
   const green = "#00FF00";
+  const orange = "#E95420";
 
   const statusColor =
     stats.status === "Critical"
@@ -65,26 +66,26 @@ async function formatStatusText(
     `${c(teal, k)} ${c(white, v)}${extra}`;
 
   const art = [
-    `                             ....               `,
-    `              .',:clooo:  .:looooo:.            `,
-    `           .;looooooooc  .oooooooooo'           `,
-    `        .;looooool:,''.  :ooooooooooc           `,
-    `       ;looool;.         'oooooooooo,           `,
-    `      ;clool'             .cooooooc.  ,,        `,
-    `         ...                ......  .:oo,       `,
-    `  .;clol:,.                        .loooo'      `,
-    ` :ooooooooo,                        'ooool      `,
-    `'ooooooooooo.                        loooo.     `,
-    `'ooooooooool                         coooo.     `,
-    ` ,loooooooc.                        .loooo.     `,
-    `   .,;;;'.                          ;ooooc      `,
-    `       ...                         ,ooool.      `,
-    `    .cooooc.              ..',,'.  .cooo.       `,
-    `      ;ooooo:.           ;oooooooc.  :l.        `,
-    `       .coooooc,..      coooooooooo.            `,
-    `         .:ooooooolc:. .ooooooooooo'            `,
-    `           .':loooooo;  ,oooooooooc             `,
-    `               ..';::c'  .;loooo:'              `,
+    c(orange, `                             ....               `),
+    c(orange, `              .',:clooo:  .:looooo:.            `),
+    c(orange, `           .;looooooooc  .oooooooooo'           `),
+    c(orange, `        .;looooool:,''.  :ooooooooooc           `),
+    c(orange, `       ;looool;.         'oooooooooo,           `),
+    c(orange, `      ;clool'             .cooooooc.  ,,        `),
+    c(orange, `         ...                ......  .:oo,       `),
+    c(orange, `  .;clol:,.                        .loooo'      `),
+    c(orange, ` :ooooooooo,                        'ooool      `),
+    c(orange, `'ooooooooooo.                        loooo.     `),
+    c(orange, `'ooooooooool                         coooo.     `),
+    c(orange, ` ,loooooooc.                        .loooo.     `),
+    c(orange, `   .,;;;'.                          ;ooooc      `),
+    c(orange, `       ...                         ,ooool.      `),
+    c(orange, `    .cooooc.              ..',,'.  .cooo.       `),
+    c(orange, `      ;ooooo:.           ;oooooooc.  :l.        `),
+    c(orange, `       .coooooc,..      coooooooooo.            `),
+    c(orange, `         .:ooooooolc:. .ooooooooooo'            `),
+    c(orange, `           .':loooooo;  ,oooooooooc             `),
+    c(orange, `               ..';::c'  .;loooo:'              `),
   ];
 
   const info = [
